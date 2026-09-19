@@ -1,28 +1,21 @@
 # Windows Folder Manager
 
-Local Windows folder indexer with SQLite, Express REST API, PowerShell scanner, and browser dashboard.
+Local Windows folder indexer using Node.js, Express, SQLite and PowerShell.
 
 ## Install
 
-Requirements: Node.js 18+ and PowerShell 5.1+ / 7.
+1. Install Node.js LTS.
+2. Open PowerShell in this repository.
+3. Run `Set-ExecutionPolicy -Scope Process Bypass`.
+4. Run `./scripts/install.ps1`.
+5. Run `./scripts/start.ps1`.
 
-```powershell
-.\\scripts\\install.ps1
-```
+Dashboard: http://127.0.0.1:3000
 
-## Run
+## Scan
+Use **Scan Folder** in the dashboard, or run `./scripts/scan.ps1 -Path "D:\Projects"`.
 
-```powershell
-.\\scripts\\start.ps1
-```
+The application indexes metadata only. The SQLite database is created locally at `data/folders.db` and ignored by Git.
 
-Open http://localhost:3080
-
-## Index folders
-
-```powershell
-.\\scripts\\scan.ps1 -Path "D:\\Projects" -Category "Projects"
-.\\scripts\\scan.ps1 -Path "D:\\Projects","E:\\Media" -Category "Library"
-```
-
-SQLite is created at `data/folders.db` and ignored by Git; folder contents remain local to your Windows machine.
+## API
+GET `/api/health`, `/api/stats`, `/api/folders`; POST `/api/folders`, `/api/scan`; PUT/DELETE `/api/folders/:id`; POST `/api/folders/:id/open`.
