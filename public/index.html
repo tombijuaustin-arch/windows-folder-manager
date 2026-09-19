@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Windows Folder Manager</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">LOCAL FOLDER DATABASE</p>
+        <h1>Windows Folder Manager</h1>
+        <p class="sub">Search, organize and open folders from one local dashboard.</p>
+      </div>
+      <button id="newFolderBtn" class="primary">+ Add Folder</button>
+    </header>
+
+    <section class="toolbar">
+      <input id="search" placeholder="Search folder name, path, tags..." autocomplete="off">
+      <select id="category"><option value="">All categories</option></select>
+      <button id="refreshBtn" class="ghost">Refresh</button>
+    </section>
+
+    <section id="stats" class="stats"></section>
+    <section id="list" class="grid"></section>
+  </main>
+
+  <dialog id="dialog">
+    <form method="dialog" id="folderForm" class="form">
+      <div class="formHead">
+        <div>
+          <p class="eyebrow">FOLDER ENTRY</p>
+          <h2 id="dialogTitle">Add Folder</h2>
+        </div>
+        <button value="cancel" class="iconBtn" aria-label="Close">×</button>
+      </div>
+
+      <input type="hidden" id="id">
+      <label>Name<input id="name" required></label>
+      <label>Path<input id="path" placeholder="D:\Projects\Photography" required></label>
+      <label>Category<input id="cat" placeholder="Photography"></label>
+      <label>Tags<input id="tags" placeholder="photo, archive, work"></label>
+      <label>Description<textarea id="description" rows="4"></textarea></label>
+
+      <div class="row">
+        <label>Files<input id="file_count" type="number" min="0" value="0"></label>
+        <label>Folders<input id="folder_count" type="number" min="0" value="0"></label>
+        <label>Size (bytes)<input id="size_bytes" type="number" min="0" value="0"></label>
+      </div>
+
+      <div class="actions">
+        <button value="cancel" class="ghost">Cancel</button>
+        <button value="default" class="primary" id="saveBtn">Save Folder</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>
