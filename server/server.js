@@ -1,131 +1,25 @@
-const path = require("path");
-const express = require("express");
-const cors = require("cors");
-const db = require("./database");
-
-const app = express();
-const PORT = Number(process.env.PORT || 3080);
-
+const express=require('express');
+const cors=require('cors');
+const path=require('path');
+const fs=require('fs');
+const {spawn}=require('child_process');
+const db=require('./database');
+const app=express();
+const PORT=Number(process.env.PORT||3000);
 app.use(cors());
-app.use(express.json({ limit: "1mb" }));
-app.use(express.static(path.join(__dirname, "..", "public")));
-
-function normalize(input) {
-  return {
-    name: String(input.name || "").trim(),
-    path: String(input.path || "").trim(),
-    category: String(input.category || "").trim(),
-    description: String(input.description || "").trim(),
-    tags: String(input.tags || "").trim(),
-    file_count: Number(input.file_count || 0),
-    folder_count: Number(input.folder_count || 0),
-    size_bytes: Number(input.size_bytes || 0)
-  };
-}
-
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "windows-folder-manager" });
-});
-
-app.get("/api/folders", (req, res) => {
-  const q = String(req.query.q || "").trim();
-  const category = String(req.query.category || "").trim();
-
-  let sql = "SELECT * FROM folders WHERE 1=1";
-  const params = {};
-
-  if (q) {
-    sql += " AND (name LIKE @q OR path LIKE @q OR category LIKE @q OR tags LIKE @q OR description LIKE @q)";
-    params.q = "%" + q + "%";
-  }
-  if (category) {
-    sql += " AND category = @category";
-    params.category = category;
-  }
-
-  sql += " ORDER BY name COLLATE NOCASE";
-  res.json(db.prepare(sql).all(params));
-});
-
-app.get("/api/categories", (_req, res) => {
-  res.json(db.prepare(
-    "SELECT category, COUNT(*) AS count FROM folders WHERE category <> '' GROUP BY category ORDER BY category"
-  ).all());
-});
-
-app.post("/api/folders", (req, res) => {
-  const folder = normalize(req.body);
-  if (!folder.name || !folder.path) {
-    return res.status(400).json({ error: "name and path are required" });
-  }
-
-  try {
-    const result = db.prepare(`
-      INSERT INTO folders
-      (name, path, category, description, tags, file_count, folder_count, size_bytes, updated_at)
-      VALUES (@name, @path, @category, @description, @tags, @file_count, @folder_count, @size_bytes, CURRENT_TIMESTAMP)
-    `).run(folder);
-    res.status(201).json(db.prepare("SELECT * FROM folders WHERE id = ?").get(result.lastInsertRowid));
-  } catch (err) {
-    if (String(err.message).includes("UNIQUE")) {
-      return res.status(409).json({ error: "A folder with this path already exists." });
-    }
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put("/api/folders/:id", (req, res) => {
-  const id = Number(req.params.id);
-  const folder = normalize(req.body);
-  if (!folder.name || !folder.path) {
-    return res.status(400).json({ error: "name and path are required" });
-  }
-
-  const result = db.prepare(`
-    UPDATE folders SET
-      name=@name, path=@path, category=@category, description=@description,
-      tags=@tags, file_count=@file_count, folder_count=@folder_count,
-      size_bytes=@size_bytes, updated_at=CURRENT_TIMESTAMP
-    WHERE id=@id
-  `).run({ ...folder, id });
-
-  if (!result.changes) return res.status(404).json({ error: "Folder not found" });
-  res.json(db.prepare("SELECT * FROM folders WHERE id = ?").get(id));
-});
-
-app.delete("/api/folders/:id", (req, res) => {
-  const result = db.prepare("DELETE FROM folders WHERE id = ?").run(Number(req.params.id));
-  if (!result.changes) return res.status(404).json({ error: "Folder not found" });
-  res.status(204).end();
-});
-
-app.post("/api/scan/upsert", (req, res) => {
-  const folder = normalize(req.body);
-  if (!folder.name || !folder.path) {
-    return res.status(400).json({ error: "name and path are required" });
-  }
-
-  const existing = db.prepare("SELECT id FROM folders WHERE path = ?").get(folder.path);
-
-  if (existing) {
-    db.prepare(`
-      UPDATE folders SET
-        name=@name, category=@category, description=@description, tags=@tags,
-        file_count=@file_count, folder_count=@folder_count, size_bytes=@size_bytes,
-        updated_at=CURRENT_TIMESTAMP
-      WHERE id=@id
-    `).run({ ...folder, id: existing.id });
-  } else {
-    db.prepare(`
-      INSERT INTO folders
-      (name, path, category, description, tags, file_count, folder_count, size_bytes, updated_at)
-      VALUES (@name,@path,@category,@description,@tags,@file_count,@folder_count,@size_bytes,CURRENT_TIMESTAMP)
-    `).run(folder);
-  }
-
-  res.json(db.prepare("SELECT * FROM folders WHERE path = ?").get(folder.path));
-});
-
-app.listen(PORT, () => {
-  console.log(`Windows Folder Manager running at http://localhost:${PORT}`);
-});
+app.use(express.json({limit:'1mb'}));
+app.use(express.static(path.join(__dirname,'..','public')));
+const norm=v=>String(v||'').trim().replaceAll('/','\\').replace(/\\\\+/g,'\\');
+const record=r=>({...r,tags:r.tags?r.tags.split(',').map(x=>x.trim()).filter(Boolean):[]});
+app.get('/api/health',(_,res)=>res.json({ok:true}));
+app.get('/api/stats',(_,res)=>res.json(db.prepare('SELECT COUNT(*) folders,COALESCE(SUM(file_count),0) files,COALESCE(SUM(folder_count),0) subfolders,COALESCE(SUM(size_bytes),0) size_bytes FROM folders').get()));
+app.get('/api/folders',(req,res)=>{const q=String(req.query.q||'').trim().toLowerCase(),c=String(req.query.category||'').trim();const rows=db.prepare("SELECT * FROM folders WHERE (?='' OR lower(name) LIKE '%'||?||'%' OR lower(path) LIKE '%'||?||'%' OR lower(category) LIKE '%'||?||'%' OR lower(tags) LIKE '%'||?||'%') AND (?='' OR category=?) ORDER BY lower(name)").all(q,q,q,q,q,c,c);res.json(rows.map(record));});
+app.get('/api/folders/:id',(req,res)=>{const r=db.prepare('SELECT * FROM folders WHERE id=?').get(Number(req.params.id));if(!r)return res.status(404).json({error:'Folder not found'});res.json(record(r));});
+app.post('/api/folders',(req,res)=>{try{const b=req.body,p=norm(b.path),n=String(b.name||'').trim();if(!n||!p)return res.status(400).json({error:'name and path are required'});const r=db.prepare('INSERT INTO folders(name,path,category,description,tags,file_count,folder_count,size_bytes,last_scanned_at) VALUES(?,?,?,?,?,?,?,?,?)').run(n,p,String(b.category||''),String(b.description||''),Array.isArray(b.tags)?b.tags.join(', '):String(b.tags||''),Number(b.file_count||0),Number(b.folder_count||0),Number(b.size_bytes||0),b.last_scanned_at||null);res.status(201).json(record(db.prepare('SELECT * FROM folders WHERE id=?').get(r.lastInsertRowid)));}catch(e){res.status(String(e.message).includes('UNIQUE')?409:400).json({error:String(e.message)});}});
+app.put('/api/folders/:id',(req,res)=>{const id=Number(req.params.id),o=db.prepare('SELECT * FROM folders WHERE id=?').get(id);if(!o)return res.status(404).json({error:'Folder not found'});try{db.prepare('UPDATE folders SET name=?,path=?,category=?,description=?,tags=?,file_count=?,folder_count=?,size_bytes=?,last_scanned_at=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(String(req.body.name??o.name),norm(req.body.path??o.path),String(req.body.category??o.category),String(req.body.description??o.description),Array.isArray(req.body.tags)?req.body.tags.join(', '):String(req.body.tags??o.tags),Number(req.body.file_count??o.file_count),Number(req.body.folder_count??o.folder_count),Number(req.body.size_bytes??o.size_bytes),req.body.last_scanned_at??o.last_scanned_at,id);res.json(record(db.prepare('SELECT * FROM folders WHERE id=?').get(id)));}catch(e){res.status(String(e.message).includes('UNIQUE')?409:400).json({error:String(e.message)});}});
+app.delete('/api/folders/:id',(req,res)=>{const r=db.prepare('DELETE FROM folders WHERE id=?').run(Number(req.params.id));if(!r.changes)return res.status(404).json({error:'Folder not found'});res.status(204).end();});
+app.post('/api/folders/:id/open',(req,res)=>{const r=db.prepare('SELECT path FROM folders WHERE id=?').get(Number(req.params.id));if(!r)return res.status(404).json({error:'Folder not found'});if(!fs.existsSync(r.path))return res.status(404).json({error:'Folder path does not exist'});const c=spawn('explorer.exe',[r.path],{detached:true,stdio:'ignore',windowsHide:true});c.unref();res.json({ok:true});});
+app.post('/api/scan',(req,res)=>{const p=norm(req.body.path);if(!p)return res.status(400).json({error:'path is required'});if(!fs.existsSync(p))return res.status(404).json({error:'Folder path does not exist'});const s=path.join(__dirname,'..','scanner','scan.ps1');const c=spawn('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',s,'-Path',p,'-Api','http://127.0.0.1:'+PORT+'/api/folders/upsert'],{windowsHide:true});c.on('close',code=>console.log('scan exit',code));res.status(202).json({ok:true,message:'Scan started'});});
+app.post('/api/folders/upsert',(req,res)=>{const b=req.body;if(!b.path)return res.status(400).json({error:'path required'});const p=norm(b.path),o=db.prepare('SELECT id FROM folders WHERE path=?').get(p),v=[String(b.name||path.basename(p)),p,String(b.category||''),String(b.description||''),Array.isArray(b.tags)?b.tags.join(', '):String(b.tags||''),Number(b.file_count||0),Number(b.folder_count||0),Number(b.size_bytes||0),new Date().toISOString()];if(o)db.prepare('UPDATE folders SET name=?,category=?,description=?,tags=?,file_count=?,folder_count=?,size_bytes=?,last_scanned_at=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(v[0],v[2],v[3],v[4],v[5],v[6],v[7],v[8],o.id);else db.prepare('INSERT INTO folders(name,path,category,description,tags,file_count,folder_count,size_bytes,last_scanned_at) VALUES(?,?,?,?,?,?,?,?,?)').run(...v);res.json({ok:true});});
+app.get('*',(_,res)=>res.sendFile(path.join(__dirname,'..','public','index.html')));
+app.listen(PORT,'127.0.0.1',()=>console.log('http://127.0.0.1:'+PORT));
