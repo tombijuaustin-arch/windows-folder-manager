@@ -1,29 +1,30 @@
 const path = require("path");
-const fs = require("fs");
 const Database = require("better-sqlite3");
 
-const dataDir = path.join(__dirname, "..", "data");
-fs.mkdirSync(dataDir, { recursive: true });
+const dbPath = path.join(__dirname, "..", "data", "folders.db");
+const db = new Database(dbPath);
 
-const db = new Database(path.join(dataDir, "folders.db"));
 db.pragma("journal_mode = WAL");
+db.pragma("foreign_keys = ON");
 
 db.exec(`
-CREATE TABLE IF NOT EXISTS folders (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  path TEXT NOT NULL UNIQUE,
-  category TEXT DEFAULT '',
-  description TEXT DEFAULT '',
-  tags TEXT DEFAULT '',
-  file_count INTEGER DEFAULT 0,
-  folder_count INTEGER DEFAULT 0,
-  size_bytes INTEGER DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS idx_folders_name ON folders(name);
-CREATE INDEX IF NOT EXISTS idx_folders_category ON folders(category);
+  CREATE TABLE IF NOT EXISTS folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL UNIQUE,
+    category TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    tags TEXT NOT NULL DEFAULT '',
+    file_count INTEGER NOT NULL DEFAULT 0,
+    folder_count INTEGER NOT NULL DEFAULT 0,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    last_scanned_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_folders_name ON folders(name);
+  CREATE INDEX IF NOT EXISTS idx_folders_category ON folders(category);
+  CREATE INDEX IF NOT EXISTS idx_folders_path ON folders(path);
 `);
 
 module.exports = db;
